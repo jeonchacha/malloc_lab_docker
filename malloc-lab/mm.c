@@ -70,6 +70,10 @@ team_t team = {
 /* 시작 포인터 = 프롤로그 페이로드 */
 static char *heap_listp = NULL;
 
+#ifdef NEXT_FIT
+static char *rover = NULL;
+#endif
+
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
@@ -91,6 +95,10 @@ int mm_init(void)
     /* 블록 사이즈는 8의 배수 이므로 시작 bp가 8이면 payload 정렬이 끝까지 유지된다.
     * 8 + 8의 배수 = 다음 블록의 페이로드
     */
+
+#ifdef NEXT_FIT
+    rover = heap_listp;
+#endif
 
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) /* 청크사이즈 바이트로 확장하고 초기 free block 생성 */
         return -1;
@@ -157,19 +165,55 @@ void *mm_malloc(size_t size)
 static void *find_fit(size_t asize)
 {
     void *bp;
-
+    
 #ifdef FIRST_FIT
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) /* 힙 시작주소부터 - 헤더의 사이즈가 0 보다 클 때까지 - 다음 블록 페이로드 포인터로 이동 */
+#warning "FIRST_FIT"
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) /* 힙 시작주소부터 - 에필로드 가드(헤더의 사이즈가 0 보다 클 때까지) - 다음 블록 페이로드 포인터로 이동 */
     {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) /* alloc이 0이고 사이즈가 할당해야 할 사이즈보다 크거나 같다면 */
             return bp;
     }
-    return NULL; /* no fit return null */
-#elif NEXT_FIT
+#elif defined(NEXT_FIT)
+#warning "NEXT_FIT"
+    for (bp = NEXT_BLKP(rover); GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) /* heap_listp는 프롤로그 payload이고 첫 진짜 블록은 NEXT_BLKP, 그리고 이전 검색이 멈춘 다음 블록부터 봐야하기도 함 */
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            rover = bp;
+            return bp;
+        }
+    }
+    for (bp = heap_listp; bp != rover; bp = NEXT_BLKP(bp)) /* 랩어라운드(wrap-around) -> 처음부터 */
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            rover = bp;
+            return bp;
+        }
+    }
+#elif defined(BEST_FIT)
+#warning "BEST_FIT"
+    void *best_bp = NULL;
+    size_t best_sz = (size_t) - 1;
 
-#elif BEST_FIT
-
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            if (GET_SIZE(HDRP(bp)) < best_sz)
+            {
+                best_sz = GET_SIZE(HDRP(bp));
+                best_bp = bp;
+            }
+            
+            if (asize == GET_SIZE(HDRP(bp))) /* 퍼펙트 핏 즉시 종료 */
+                break;
+        }
+    }
+    return best_bp;
 #endif
+
+    return NULL; /* no fit return null */
 }
 
 static void place(void *bp, size_t asize)
@@ -238,7 +282,16 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); /* 다음 블록의 푸터 위치 */
         bp = PREV_BLKP(bp); /* 페이로드는 이전 블록으로 */
     }
-    
+
+#ifdef NEXT_FIT
+        /* 합쳐진 영역 안에 rover가 들어오면 합쳐진 새 블록의 바로 이전 블록에 rover를 둠.
+        * 다음 탐색이 NEXT_BLKP(rover)에서 시작하므로, 첫 후보가 방금 합쳐진 큰 가용 블록이 됨.
+        */
+        if ((char *)bp <= rover && rover < (char *)bp + size)
+        {
+            rover = PREV_BLKP(bp);
+        }
+#endif
     return bp;
 }
 
