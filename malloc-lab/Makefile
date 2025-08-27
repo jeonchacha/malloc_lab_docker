@@ -11,6 +11,7 @@ CFLAGS = -Wall -O2 -g
 # CFLAGS += -DFIRST_FIT
 CFLAGS += -DNEXT_FIT
 # CFLAGS += -DBEST_FIT
+CFLAGS += -DDEBUG_ELISION
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 

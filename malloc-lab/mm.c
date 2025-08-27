@@ -76,6 +76,19 @@ team_t team = {
 /* 시작 포인터 = 프롤로그 페이로드 */
 static char *heap_listp = NULL;
 
+#ifdef DEBUG_ELISION
+#warning "DEBUG_ELISION"
+static size_t g_saved8 = 0;  // elision 히트수
+static size_t g_extcnt = 0;  // extend_heap 성공 횟수
+
+/* mdriver가 읽어갈 getter */
+void mm_debug_counters(size_t *saved8, size_t *extcnt)
+{
+    if (saved8) *saved8 = g_saved8;
+    if (extcnt) *extcnt = g_extcnt;
+}
+#endif
+
 #ifdef NEXT_FIT
 static char *rover = NULL;
 #endif
@@ -90,6 +103,12 @@ static void place(void *bp, size_t asize);
  */
 int mm_init(void)
 {
+#ifdef DEBUG_ELISION
+    // ★ 각 단계 시작마다 초기화: valid, util, speed 각각 독립 집계
+    g_saved8 = 0;
+    g_extcnt = 0;
+#endif
+
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) /* 16바이트 확보 */
         return -1;
     
@@ -124,6 +143,10 @@ static void *extend_heap(size_t words)
     if ((long)(bp = mem_sbrk(size)) == -1) /* 사이즈 만큼의 추가 힙 공간 요청 */
         return NULL;
     
+#ifdef DEBUG_ELISION
+    g_extcnt++;   // 여기서 증가 (성공했을 때만)
+#endif
+
     int prev_alloc = GET_PREV_ALLOC(HDRP(bp)); /* 확장 전 에필로그의 prev_alloc = 직전 블록의 alloc */
     PUT(HDRP(bp), PACKPA(size, 0, prev_alloc)); /* 새 free block 헤더: prev_alloc 유지 */
     PUT(FTRP(bp), PACK(size, 0)); /* free만 footer 유지 */
@@ -138,6 +161,12 @@ static void *extend_heap(size_t words)
  */
 void *mm_malloc(size_t size)
 {
+#ifdef DEBUG_ELISION
+    size_t olda = MAX(2*DSIZE, ALIGN(size + 2*WSIZE)); // 헤더+푸터 가정
+    size_t newa = MAX(2*DSIZE, ALIGN(size + WSIZE));   // footer elision (헤더만)
+    if (olda == newa + 8) g_saved8++;
+#endif
+
     size_t asize; /* adjusted size, 실제 할당 크기: 요청한 페이로드 + 헤더/푸터 오버헤드 + 정렬 */
     size_t extendsize; /* amount to extend heap if no fit */
     char *bp;

@@ -819,6 +819,13 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 		}
 	}
 
+#ifdef DEBUG_ELISION
+	size_t s8 = 0, ex = 0;
+    mm_debug_counters(&s8, &ex);  // mm.c에서 제공하는 getter
+    printf("[UTIL trace %d] saved8=%zu, extcnt=%zu\n", tracenum, s8, ex);
+    fflush(stdout);
+#endif
+
 	return ((double)max_total_size / (double)mem_heapsize());
 }
 
