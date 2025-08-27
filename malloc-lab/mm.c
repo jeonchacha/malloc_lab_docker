@@ -323,4 +323,18 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+
+    // if (oldptr == NULL) return mm_malloc(size);
+    // if (size == 0) { mm_free(oldptr); return NULL; }
+
+    // size_t old_blk = GET_SIZE(HDRP(oldptr));   // 헤더의 size 필드 (마스크 적용됨)
+    // size_t old_pay = old_blk - WSIZE;          // footer elision: 할당 블록은 header 4B만 오버헤드
+
+    // void *newptr = mm_malloc(size);
+    // if (!newptr) return NULL;
+
+    // size_t cpy = (size < old_pay) ? size : old_pay;   // 반드시 old_payload로 상한
+    // memcpy(newptr, oldptr, cpy);
+    // mm_free(oldptr);
+    // return newptr;
 }
